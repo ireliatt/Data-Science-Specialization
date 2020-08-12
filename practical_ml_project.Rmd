@@ -1,0 +1,130 @@
+---
+title: "Practical Machine Learning Project"
+author: "Tingting He"
+date: "12/08/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Overview
+
+The goal of this project is to predict the manner in which people do exercises. In other words, we predict the "classe" variable with other predictors. We first load the data and do some data cleansing steps. Then we train the models with four methods: random forest, boosting, LDA and Naive Bayes. It was found that random forest gives the highest prediction accuracy. We also combined random forest and boosting model then predict the testing data with them and explore the differences.
+
+## Data Cleansing
+
+The data was stored in two seperate documents: pml-training and plm-testing. We do the model training and validation with training data and we apply the best model on the testing data to predict the class. In this project, since there are many columns with very little information, we delete all the columns that have NA's. The columns containing orders and timestamps are also removed since they are not informative as predictors. Thus, we have 56 variables left and we divide the data into training set (60%) and validation set (40%).
+
+```{r, include=FALSE, echo=FALSE}
+# load the data
+data <- read.csv("pml-training.csv", header = T, na.strings = c(""," ","NA"))
+testing <- read.csv("pml-testing.csv", header = T, na.strings = c(""," ","NA"))
+
+# romove columns containing NAs
+data <- data[,colSums(is.na(data)) == 0]
+testing <- testing[,colSums(is.na(testing)) == 0]
+
+# remove timestamps
+data <- data[,-c(1,3:5)]
+testing <- testing[,-c(1,3:5,60)]
+
+# create training and cross-validation set
+library(caret)
+inTrain <- createDataPartition(y = data$classe, p = 0.6, list = FALSE)
+training <- data[inTrain,]
+crossv <- data[-inTrain,]
+```
+
+```{r, include=FALSE, echo=FALSE}
+# Configure parallel processing
+library(parallel)
+library(doParallel)
+set.seed(233)
+cluster <- makeCluster(detectCores() - 1)
+registerDoParallel(cluster)
+
+# Configure trainControl object
+fitControl <- trainControl(method = "cv", number = 5, allowParallel = TRUE)
+```
+
+## Training Models
+
+We first train four models with random forest, boosting, LDA and Naive Bayes seperately. The boosting method we use here is boosting with trees. Then we predict the "classe" variable in the validation set with these four models. The confusion matrices are displayed below.
+
+```{r, include=FALSE, echo=FALSE}
+# Developing training models
+library(klaR)
+fitRF <- train(classe ~ ., method = "rf", data = training, trControl = fitControl)
+fitBT <- train(classe ~ ., method = "gbm", data = training, trControl = fitControl, verbose=FALSE)
+fitLDA <- train(classe ~ ., method = "lda", data = training, trControl = fitControl)
+fitNB <- train(classe ~ ., method = "nb", data = training, trControl = fitControl, verbose=FALSE)
+
+# make predictions on validation set
+predRF <- predict(fitRF, crossv)
+predBT <- predict(fitBT, crossv)
+predLDA <- predict(fitLDA, crossv)
+predNB <- predict(fitNB, crossv)
+```
+
+```{r, include=TRUE, echo=TRUE}
+# Confusion matrices
+confusionMatrix(predRF, crossv$classe)
+confusionMatrix(predBT, crossv$classe)
+confusionMatrix(predLDA, crossv$classe)
+confusionMatrix(predNB, crossv$classe)
+```
+
+As shown above, the accuray given by random forest is the highest, followed by boosting, which gives a slightly lower accuracy but still over 98%. The reason behind this could be that random forest applies boostrapping method, however processing random forest takes a rather long time compared with other methods. 
+
+Naive Bayes performs the worst in this experiment. One possible explanation is that both LDA and Naive Bayes makes additional assumptions about the data: LDA assumes $f_{k}(x)$ is multivariate Gaussian with same covariances, while Naive Bayes assumes indepentdence between features. By looking at the data, it is very likely that the features in this dataset fail this assumption.
+
+To obtain a better interpretation of the predictors, a graph illustrating the importance of variables is displayed below. It is found that "num_window" takes up almost 100 importance which indicates it is vital for predicting class. Both "roll_belt" and "pitch_forearm" score high in importance as well.
+
+```{r, include=TRUE, echo=FALSE}
+varImp <- varImp(fitRF)
+plot(varImp, main = "Importance of Top 20 Variables", top = 20)
+```
+
+## Combining Models
+
+To construct a model with higher accuracy, we pick the two methods that give the best accuracy: random forest and boosting here and combine the classifiers. The confusion matrix is shown below. The combined model gives an accuracy of 0.999, which is even higher than that provided by random forest.
+
+```{r, echo=FALSE, include=TRUE}
+# combine models
+predDF <- data.frame(predRF, predBT, classe = crossv$classe)
+combModFit <- train(classe ~., method = "rf", data = predDF, trControl = fitControl)
+combPred <- predict(combModFit, predDF)
+confusionMatrix(combPred, predDF$classe)
+```
+
+## Prediction
+
+Since random forest, boosting and the combined model gives very similar accuracy, we will predict with three models seperately and check the difference:
+
+```{r, include=TRUE, echo=TRUE}
+predRF <- predict(fitRF, testing)
+predRF
+```
+
+```{r, include=TRUE, echo=TRUE}
+predBT <- predict(fitBT, testing)
+predBT
+```
+
+```{r, include=TRUE, echo=TRUE}
+predTDF <- data.frame(predRF,predBT)
+predict(combModFit, predTDF)
+```
+
+The predictions provided by the models are the same. It is not surprising because all the three models give accuracies of over 98% in the validation above, which means they are very likely to give the "true" class. Besides, 20 observations is too small to tell any difference, we may see a different prediction with larger testing set.
+
+Thus, the prediction of "classe" given by this project is B A B A A E D B A A B C B A E E A B B B.
+
+## Reference
+Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6.
+
+Read more: http://groupware.les.inf.puc-rio.br/har#ixzz6TfGaOBtD
