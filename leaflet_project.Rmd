@@ -1,0 +1,34 @@
+---
+title: "Places I’ve Been Missing"
+author: "Tingting He"
+date: "14/08/2020"
+output: html_document
+---
+
+```{r setup, include=TRUE, echo=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+### Hey, I'm been missing my life in university terribly. 
+#### This map shows where we lived, where we studied, where we drank, where I worked and where we did workout. Basically Edinburgh is my second hometown. It's really beautiful. 
+
+```{r}
+library(leaflet)
+EdinIcon <- makeIcon(
+  iconUrl = "https://upload.wikimedia.org/wikipedia/en/7/7a/University_of_Edinburgh_ceremonial_roundel.svg",
+  iconWidth = 31*215/230, iconHeight = 31,
+  iconAnchorX = 31*215/230/2, iconAnchorY = 16
+)
+
+Names <- c("Home","Main Library", "Appleton Tower", "Stack Dim Sum Bar", 
+           "James Clerk Maxwell Building", "Teviot", "Lidl", "Pleasance Gym")
+
+places <- data.frame(lat = c(55.945870,55.942692,55.944491,55.964784,55.922238, 55.945231,55.945671,55.948242),
+                     lng = c(-3.189610,-3.189005,-3.187020,-3.173684,-3.171259, -3.188786, -3.184314,-3.180689))
+places %>% 
+  leaflet() %>%
+  addTiles() %>%
+  addMarkers(icon = EdinIcon, 
+             clusterOptions = markerClusterOptions(),
+             popup = Names)
+```
